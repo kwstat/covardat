@@ -1,0 +1,402 @@
+---
+title: "R-side structures in SAS, nlme, asreml"
+author: "Kevin Wright"
+date: "`r Sys.Date()`"
+bibliography: covardat.bib
+output:
+  rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{R-side structures in SAS, nlme, asreml}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+# Abstract
+
+Alzheimer's patients were randomized to one of three treatments (Low, High, Placebo). Each patient was given a cognitive evaluation every two months during the year using the Alzheimer's Disease Assessment Scale (ADAS).  The cognitive scores range from 0 to 70, higher values indicate greater severity of the disease.
+
+Note: this is a re-working of Example 8.3, Disease Progression in Alzheimer's Trial, found in @walker2002.
+
+# R setup
+
+First, attach necessary packages, source in the R code for the `rmat()`
+functions, and read in the data in the wide-format shown in the SAS book.
+
+```{r setup, message=FALSE, results="hide"}
+library(knitr)
+library(asreml)
+library(covardat)
+
+```
+
+# Data preparation
+
+The data is found in the `covardat` package. The `nlme` function works much more smoothly with a `groupedData` object, so create that too.
+
+```{r data}
+data(alzheimers)
+dat <- alzheimers
+dat <- transform(dat, patient=factor(patient),
+                 month=factor(month))
+require(nlme)
+datg <- groupedData(score ~ as.numeric(month)|patient, data=dat)
+```
+
+In the following plot, each line represents one patient, and shows the change in cognitive score over time.
+
+```{r plotraw}
+require(lattice)
+xyplot(score ~ month|trt , data=dat, groups=patient,
+             xlab="month", ylab="ADAS cognitive score", type='l',layout=c(3,1),
+             scales=list(x=list(rot=90, cex=.75, alternating=FALSE)))
+```
+
+The following scatterplot matrix will provide some guidance for models.  Each point represents one patient.  The correlation of observed values is much higher for months that are adjacent than for months that are farther apart.  It is this correlation which can be captured in a model.
+
+```{r splom}
+require(reshape2)
+datw <- acast(dat, patient~month)
+splom(~datw, cex=.5, varname.cex=.75,
+      axis.text.cex=.5, axis.line.tck=0)
+## require(corrgram)
+## corrgram(datw, upper.panel=panel.pts, lower.panel=panel.cor)
+## title("alzheimers")
+```
+
+# Uniform Correlation, Compound Symmetry
+
+In the compound symmetry (also called uniform correlation), all off-diagonal elements of the correlation matrix have the same value.
+
+## Compound Symmetry - SAS
+
+```
+PROC MIXED;
+CLASS trt month patient;
+MODEL score = trt month trt*month;
+repeated / subject=patient(trt) type=cs rcorr;
+
+   Estimated R Correlation Matrix for patient(treat)
+ Row      Col1     Col2     Col3     Col4     Col5     Col6 
+   1    1.0000   0.8038   0.8038   0.8038   0.8038   0.8038 
+   2    0.8038   1.0000   0.8038   0.8038   0.8038   0.8038 
+   3    0.8038   0.8038   1.0000   0.8038   0.8038   0.8038 
+   4    0.8038   0.8038   0.8038   1.0000   0.8038   0.8038 
+   5    0.8038   0.8038   0.8038   0.8038   1.0000   0.8038 
+   6    0.8038   0.8038   0.8038   0.8038   0.8038   1.0000
+
+  Covariance Parameter Estimates 
+ 
+ Cov Parm     Subject       Estimate 
+ CS           pat(treat)     64.6927 
+ Residual                    15.7919
+ 
+```
+
+The `RCORR` option tells SAS to print the R-side correlation matrix.  Since each patient receives only one treatment and the patient numbers are unique, the `repeated` statement could be simplified to `subject = patient`, indicating that there are repeated measurements on each subject (i.e. patient).
+
+## Compound Symmetry - nlme
+
+The `lme()` function requires the inclusion of random effects.  Since this example has no random effects, the `gls()` function is used instead of `lme`.
+
+```{r cs.nlmes}
+# CS - nlme
+# 'gls' needs a groupedData data.  Otherwise it shows only 5 columns in R
+cs1 <- gls(score ~ trt * month, data=datg,
+           correlation=corCompSymm(form = ~ 1 | patient),
+           na.action=na.omit)
+logLik(cs1)*2 # match to SAS
+anova(cs1) # similar to SAS
+# summary(cs1) # Too much output
+summary(cs1$modelStruct$corStruct)
+# cs1$sigma^2 * .8038 = 64.69 # SAS scaling
+```
+
+For any patient, the correlation of observations at (any) two times is about 0.80.
+
+In order to make this a bit more clear, the `rcor()` function was created to print the R matrix (similar to `RCORR` option in SAS).  The `lucid()` function is used to simplify interpretation.
+
+```{r }
+require(lucid)
+noquote(lucid(rcor(cs1)))
+```
+
+## Compound Symmetry - asreml
+
+In contrast to `SAS` and `lme()`, `asreml()` requires the specification of the full residual matrix in the `rcov` argument.  The term `patient:cor(month)` is shorthand notation for an identity matrix (of size equal to the number of patients), direct-product with a uniform correlation matrix for month,
+
+$$
+R = I \otimes C_{\mbox{month}}
+$$
+
+```{r cs.asreml}
+# CS - asreml
+dat <- dat[order(dat$patient, dat$month), ]
+require(asreml)
+cs2 <- asreml(score ~ trt * month, data=dat,
+              rcov = ~ patient:cor(month), trace=FALSE)
+summary(cs2)$varcomp
+```
+
+The estimated correlation from asreml is the same as from lme.  Internally, asreml stores the estimated parameters of the R matrix as a list, each item in the list representing one of the direct-product terms specified by `rcov`.  To understand this more clearly, the following code uses `rcor()` to format the estimated parameters as a matrix.  A dedicated print method for this object shows the formula and prints the upper-left corner of each matrix.
+
+```{r }
+require(lucid)
+rcor(cs2)
+```
+
+The correlation matrix just for 'month' can be shown this way.
+
+```{r }
+noquote(lucid(rcor(cs2)$month))
+```
+
+# AR1
+
+The auto-regressive model has only one parameter to estimate, but the form of the correlation matrix is an exponential decay in the correlation as the time between two observations increases.
+
+## AR1 - SAS
+
+```
+PROC MIXED;
+CLASS trt month patient;
+MODEL score = trt month trt*month;
+repeated / subject=patient(trt) type=ar(1);
+
+        Type 3 Tests of Fixed Effects
+               Num     Den
+Effect           DF      DF    F Value    Pr > F
+trt               2      77       0.94    0.3952
+month             5     359      11.21    <.0001
+trt*month        10     359       1.43    0.1671
+```
+
+## AR1 - nlme
+
+```{r ar.nlme}
+# nlme
+ar1 <- gls(score ~ trt * month, data=datg,
+           correlation=corAR1(form = ~ 1 | patient),
+           na.action=na.omit)
+anova(ar1)
+#summary(ar1)
+summary(ar1$modelStruct$corStruct)
+noquote(lucid(rcor(ar1), dig=2))
+# cov2cor(getVarCov(ar1))
+```
+
+## AR1 - asreml
+
+```{r ar.asreml}
+# asreml
+ar2 <- asreml(score ~ trt*month, data=dat,
+              rcov = ~ patient:ar1(month), trace=FALSE)
+vc(ar2)
+noquote(lucid(rcor(ar2)$month, dig=2))
+```
+
+
+# Factor Analytic
+The factor analytic model increases the number of parameters with a vector of
+loadings and variances.
+
+## Factor Analytic - SAS
+
+Not included.
+
+## Factor Analytic - nlme
+
+Not included.
+
+## Factor Analytic - asreml
+
+```{r }
+# Factor analytic
+dat <- dat[order(dat$patient, dat$month),]
+fa2 <- asreml(score ~ trt*month, data=dat,
+              rcov = ~ patient:facv(month,1), trace=FALSE)
+vc(fa2)
+noquote(lucid(rcor(fa2)$month, dig=3))
+```
+
+Even though the extractor function is called `rcor()`, it is actually returning the covariance matrix, not the correlation matrix. Compare this to the pairwise covariance matrix of the observed data:
+
+```{r cov}
+noquote(lucid(cov(datw, use="pair"),dig=3))
+```
+
+# Toeplitz, Banded
+
+## Banded - SAS
+
+```
+PROC MIXED;
+CLASS trt month patient;
+MODEL score = trt month trt*month;
+repeated / subject=patient(trt) type=toep rcorr;
+```
+
+## Banded - nlme
+
+Not possible.
+
+## Banded - asreml
+
+```{r to.asreml}
+# TO - asreml.  This model is 'delicate' and might need help.
+# Try starting values, rcov = ~ patient:corb(month, k=4, init=rep(.5,4)))
+# Or: fit corb( , k=2) and then update the model to corb( , k=4)
+# Or: fit cor(), then update to corb()
+to2 <- asreml(score ~ trt*month, data=dat,
+              rcov = ~ patient:corb(month, k=4, init=rep(.5,4)),
+              trace=FALSE)
+noquote(lucid(rcor(to2)$month, dig=2))
+```
+
+# Antedependence
+
+Variates observed at successive times are said to have an antedependence structure of order r if each ith variate (i>r), given the preceding r, is independent of all further preceding variates.  The antedependence model is designed to be close to the unstructured model, and involves far fewer parameters.  The covariance matrix for the antedependence structure C is defined as a function of a diagonal matrix D and a matrix U which has elements all zero apart from the diagonal elements (which are all 1) and, for the order 1 structure, one off diagonal element.  For an order 2 structure, U has two off diagonal elements.  Specifically, $C = (U D^{-1} U' )^{-1}$. Asreml produces the diagonal elements of $D^{-1}$ and the non-zero elements of U.
+
+## Antedependence - SAS
+
+```
+PROC MIXED;
+CLASS trt month patient;
+MODEL score = trt month trt*month;
+repeated / subject=patient(trt) type=ante rcorr;
+```
+
+## Antedependence - nlme
+
+Not possible.
+
+## Antedependence - asreml
+
+```{r an.asreml}
+dat <- dat[order(dat$patient, dat$month),]
+an2 <- asreml(score ~ trt*month, data=dat,
+              rcov = ~ patient:ante(month, 1), trace=FALSE)
+noquote(lucid(rcor(an2)$month, dig=2))
+```
+
+# Unstructured
+
+The most general correlation matrix allows for a separate correlation between each pair of months.
+
+## Unstructured - SAS
+
+```
+PROC MIXED;
+CLASS trt month patient;
+MODEL score = trt month trt*month;
+repeated / type=un subject=patient(trt) rcorr;
+
+  PROC MIXED Using Unstructured Covariance (UN)
+        Type 3 Tests of Fixed Effects
+                Num     Den
+Effect           DF      DF    F Value    Pr > F
+trt               2      77       0.94    0.3967
+month             5      77      21.55    <.0001
+trt*month        10      77       2.08    0.0357
+
+  Estimated R Correlation Matrix for patient(treat)
+ Row       Col1     Col2     Col3     Col4     Col5     Col6 
+   1     1.0000   0.9005   0.7703   0.8002   0.7763   0.7773 
+   2     0.9005   1.0000   0.8179   0.7995   0.7521   0.7261 
+   3     0.7703   0.8179   1.0000   0.8738   0.7223   0.7418 
+   4     0.8002   0.7995   0.8738   1.0000   0.8628   0.8273 
+   5     0.7763   0.7521   0.7223   0.8628   1.0000   0.9206 
+   6     0.7773   0.7261   0.7418   0.8273   0.9206   1.0000 
+```
+
+
+## Unstructured - nlme
+
+```{r un.nlme}
+# UN nlme
+un1 <- gls(score ~ trt * month, data=datg,
+           correlation=corSymm(form = ~ 1 | patient),
+           na.action=na.omit)
+logLik(un1)*2 # DOES NOT match SAS
+anova(un1)
+noquote(lucid(rcor(un1), dig=2))
+```
+
+## Unstructured - asreml
+
+In asreml, a general correlation matrix (with arbitrary off-diagonal elements) is specified with `corg`.
+
+```{r un.asreml}
+# UN asreml.  Need starting values to get convergence
+un2 <- asreml(score ~ trt * month, data=dat,
+              rcov = ~ patient:corg(month, init=rep(.8,15)),
+              trace=FALSE)
+anova(un2)
+noquote(lucid(rcor(un2)$month, dig=2))
+```
+
+Note that in this example, it was necessary to specify starting values in order for asreml to converge.  Ideally, the strategy would be to fit a simpler model, such as the uniform correlation model, and then update to the full model.  Something like
+
+```{r eval=FALSE}
+un2a <- update(cs2, rcov = ~ patient:corg(month))
+```
+
+Unfortunately, this did not work.
+
+## Comparison
+
+All models can be compared using the `AIC()` function, but we need to define a `logLik()` method for `asreml()` objects.
+
+```{r }
+logLik.asreml <- function(object,...){
+  # Kevin Wright
+
+  val <- object$loglik
+
+  # Note that object$gammas includes parameters fixed at 1.0 and therefore
+  # length(object$gammas) is NOT the number of parameters.  Instead, look
+  # at object$gammas.con to see how many non-fixed parameters there are.
+  # Fixed parameters are denoted by code '4'.
+  p <- sum(object$gammas.con!=4)
+  attr(val,"df") <- p
+
+  # Note, for REML methods, nobs=N-p.  This does not seems to be the same
+  # as nedf (residual degrees of freedom), but when I use 'nedf' I am
+  # able to match the table of BIC values in the asreml manual (Chapter 11).
+  attr(val,"nobs") <- object$nedf
+  class(val) <- "logLik"
+  return(val)
+}
+
+AIC(cs2, ar2, fa2, to2, an2, un2)
+```
+
+The smallest AIC value comes from the unstructured model.
+
+To see visually how well the models capture the structure of the data, the observed and estimated correlations and covariances can be plotted.  The correlation matrices all have the same scale.  The covariance matrices have a common scale (different from the correlation matrices).
+
+```{r visual, fig.width=7.5, fig.height=5}
+op <- par(mfrow=c(2,4))
+# Correlations
+RedGrayBlue <- colorRampPalette(c("firebrick", "lightgray", "#375997"))
+image(cor(datw, use="pair"), zlim=c(0.2,1), col=RedGrayBlue(13))
+title("Raw correlation")
+image(rcor(cs2)$month, zlim=c(0.2,1), col=RedGrayBlue(13))
+title("Compound symmetry")
+image(rcor(ar2)$month, zlim=c(.2,1), col=RedGrayBlue(13))
+title("Autoregressive")
+image(rcor(to2)$month, zlim=c(.2,1), col=RedGrayBlue(13))
+title("Toeplitz")
+image(rcor(un2)$month, zlim=c(.2,1), col=RedGrayBlue(13))
+title("Unstructured")
+image(rcor(an2)$month, zlim=c(.2,1), col=RedGrayBlue(13))
+title("Antedependence")
+# Cov
+image(cov(datw, use="pair"), zlim=c(45,95), col=RedGrayBlue(13))
+title("Raw data covariance")
+image(rcor(fa2)$month, zlim=c(45,95), col=RedGrayBlue(13))
+title("Factor analytic covariance")
+par(op)
+```
+
+## References
+
