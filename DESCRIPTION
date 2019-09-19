@@ -2,7 +2,7 @@ Package: covardat
 Version: 0.1
 Authors@R: person("Kevin", "Wright", email = "kw.stat@gmail.com", role = c("aut", "cre"))
 Title: Data for covariance analysis
-Description: Datasets and vignette to demonstrate mixed-model analysis of residuals
+Description: Datasets and vignette to demonstrate mixed-model analysis of residuals.
 Depends: R (>= 3.5.0)
 URL: http://kwstat.github.io/covardat/
 BugReports: https://github.com/kwstat/covardat/issues
@@ -11,8 +11,10 @@ Imports:
   lucid,
   nlme
 Suggests:
-    lattice,
+    asreml,
     knitr,
+    lattice,
+    reshape2,
     testthat (>= 2.1.0)
 License: GPL-3
 LazyData: true

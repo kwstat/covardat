@@ -21,19 +21,14 @@
 }
 
 \details{
-  Patents had two daily doses of placebo, low dose, or high dose of a
-  treatment for Alzheimer's disease.
+  Patents had two daily doses of placebo, low dose, or high dose of a treatment for Alzheimer's disease.
 
   Patients were assessed every 2 months for 1 year.
 
-  Disease progression was measuered with the Alzheimer's Disease
-  Assessment Scale, which evaluates memory, language, and praxis
-  function.  Scores range from 0 to 70, with higher scores indicating
-  greater severity of disease.
+  Disease progression was measured with the Alzheimer's Disease Assessment Scale, which evaluates memory, language, and praxis function.  Scores range from 0 to 70, with higher scores indicating greater severity of disease.
 
-  Key question: Do the treatments have different response profiles over
-  time?
-  
+  Key question: Do the treatments have different response profiles over time?
+
 }
 \source{
   Glenn Walker and Jack Shostack. 2010.

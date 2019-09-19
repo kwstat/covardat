@@ -1,6 +1,5 @@
-# covar.r
+# covar.R
 # Time-stamp: c:/x/notes/covar.r
-# Copyright 2017, Kevin Wright
 
 # todo: toeplitz
 
@@ -17,9 +16,9 @@ rvar.asreml <- function(obj){
 #'
 #' Extract the R-side variance components from a fitted model (asreml or lme)
 #' and format them as matrices.
-#' 
+#'
 #' @param obj A fitted model object.
-#' 
+#'
 #' @return A list of matrices.
 #' @export
 #' @docType methods

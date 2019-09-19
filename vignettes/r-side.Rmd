@@ -55,7 +55,7 @@ The following scatterplot matrix will provide some guidance for models.  Each po
 
 ```{r splom}
 require(reshape2)
-datw <- acast(dat, patient~month)
+datw <- reshape2::acast(dat, patient~month)
 splom(~datw, cex=.5, varname.cex=.75,
       axis.text.cex=.5, axis.line.tck=0)
 ## require(corrgram)

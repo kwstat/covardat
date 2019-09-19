@@ -24,7 +24,7 @@
 
   Some mice died before the end of the experiment.
 
-  The tumoz size was measured in cubic millimeters.
+  The tumor size was measured in cubic millimeters.
 }
 \source{
   James A. Koziol, Donna A. Maxwell, Matsuro Fukushima,
@@ -33,6 +33,7 @@
   Application to an Animal Tumor Immunotherapy Experiment.
   \emph{Biometrics}, 37, 383-390.
   http://www.jstor.org/stable/2530427
+  http://doi.org/10.2307/2530427
 
   Used with permission of James Koziol.
 }
