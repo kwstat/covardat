@@ -1,6 +1,6 @@
 Package: covardat
 Version: 0.1
-Authors@R: person("Kevin", "Wright", email = "kw.stat@gmail.com", role = c("aut", "cre"))
+Authors@R: person("Kevin", "Wright", email = "kw.stat@gmail.com", role = c("aut", "cre","cph"))
 Title: Data for covariance analysis
 Description: Datasets and vignette to demonstrate mixed-model analysis of residuals.
 Depends: R (>= 3.5.0)
@@ -17,7 +17,7 @@ Suggests:
     reshape2,
     rmarkdown,
     testthat (>= 2.1.0)
-License: GPL-3
+License: MIT + file LICENSE
 LazyData: true
 RoxygenNote: 6.1.1
 Encoding: UTF-8
